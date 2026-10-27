@@ -1,0 +1,17 @@
+[Unit]
+Description=Screenroom movie library
+After=network.target
+
+[Service]
+User=screenroom
+WorkingDirectory=/opt/screenroom
+EnvironmentFile=/etc/screenroom.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/screenroom
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="description" content="Screenroom admin panel: upload and organise your movie library.">
+<title>Screenroom Admin</title>
+<link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+<div id="loginView" class="login-wrap" hidden>
+  <form id="loginForm" class="login-box">
+    <div class="logo"><span>S</span> SCREENROOM</div>
+    <h1>Admin sign in</h1>
+    <p>Only the admin can upload and manage movies.</p>
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password" required autofocus>
+    <div id="loginError" class="error"></div>
+    <button class="btn primary" type="submit">Sign in</button>
+    <a class="back" href="/">← Back to library</a>
+  </form>
+</div>
+
+<div id="appView" hidden>
+  <header class="bar">
+    <div class="logo"><span>S</span> SCREENROOM <em>ADMIN</em></div>
+    <div class="bar-actions">
+      <a class="btn ghost" href="/" target="_blank" rel="noopener">View site ↗</a>
+      <button id="logout" class="btn ghost">Sign out</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card upload">
+      <h2>Upload movie</h2>
+      <form id="uploadForm">
+        <label>Type
+          <select name="kind" id="kind"><option value="movie">Movie</option><option value="episode">Series episode</option></select>
+        </label>
+        <label id="seriesWrap" hidden>Series name<input name="seriesTitle" maxlength="180"></label>
+        <label>Title<input name="title" maxlength="180" required></label>
+        <div class="row">
+          <label id="seasonWrap" hidden>Season<input name="season" type="number" min="1" value="1"></label>
+          <label id="episodeWrap" hidden>Episode<input name="episode" type="number" min="1" value="1"></label>
+          <label>Year<input name="year" type="number" min="1900" max="2100"></label>
+        </div>
+        <div class="row">
+          <label>Genre<input name="genre" maxlength="48" placeholder="Drama"></label>
+          <label>Runtime<input name="runtime" maxlength="24" placeholder="1h 48m"></label>
+        </div>
+        <label>Colour
+          <select name="color">
+            <option value="#263549">Midnight blue</option><option value="#563c37">Warm ember</option>
+            <option value="#284a47">Deep forest</option><option value="#463c5c">Violet dusk</option>
+            <option value="#694a33">Golden hour</option>
+          </select>
+        </label>
+        <label>Description<textarea name="synopsis" rows="3" maxlength="1200"></textarea></label>
+        <label>Video file
+          <input id="file" type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime,.m4v,.mp4,.mov" required>
+          <small>MP4 (H.264 + AAC) works best on TVs. Max 8 GB.</small>
+        </label>
+        <div class="progress" id="progressWrap" hidden><i id="progressBar"></i></div>
+        <div id="status" class="status"></div>
+        <button id="uploadBtn" class="btn primary" type="submit">Upload</button>
+      </form>
+    </section>
+
+    <section class="card library">
+      <div class="lib-head">
+        <h2>Library <span id="count"></span></h2>
+        <input id="filter" type="search" placeholder="Search…">
+      </div>
+      <div id="list"></div>
+    </section>
+  </main>
+</div>
+
+<dialog id="editDialog">
+  <form id="editForm" method="dialog">
+    <h3>Edit details</h3>
+    <label id="eSeriesWrap">Series name<input name="seriesTitle" maxlength="180"></label>
+    <label>Title<input name="title" maxlength="180" required></label>
+    <div class="row">
+      <label id="eSeasonWrap">Season<input name="season" type="number" min="1"></label>
+      <label id="eEpisodeWrap">Episode<input name="episode" type="number" min="1"></label>
+      <label>Year<input name="year" type="number" min="1900" max="2100"></label>
+    </div>
+    <div class="row">
+      <label>Genre<input name="genre" maxlength="48"></label>
+      <label>Runtime<input name="runtime" maxlength="24"></label>
+    </div>
+    <label>Description<textarea name="synopsis" rows="3" maxlength="1200"></textarea></label>
+    <div class="dlg-actions">
+      <button type="button" id="editCancel" class="btn ghost">Cancel</button>
+      <button type="submit" class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+<div id="toast" class="toast"></div>
+<script src="/admin.js"></script>
+</body>
+</html>

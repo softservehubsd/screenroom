@@ -1,0 +1,1 @@
+{"name":"screenroom-streaming-library","version":"1.0.0","private":true,"description":"A TV-friendly private movie and series library with admin-only video uploads","scripts":{"start":"node server.js"},"engines":{"node":">=20"}}
