@@ -26,7 +26,7 @@ function render(){
     .sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
   $('#count').textContent='('+items.length+')';
   $('#list').innerHTML=list.length?list.map(x=>
-    '<div class="item"><div class="thumb" style="background:'+esc(x.color||'#263549')+'">'+esc(x.title.slice(0,1))+'</div>'+
+    '<div class="item"><div class="thumb" style="background:'+(x.hasPoster?'url(/api/poster/'+x.id+') center/cover':esc(x.color||'#263549'))+'">'+(x.hasPoster?'':esc(x.title.slice(0,1)))+'</div>'+
     '<div class="info"><b>'+esc(title(x))+'</b><small>'+esc([x.genre,x.year,x.runtime].filter(Boolean).join(' · '))+'</small></div>'+
     '<span class="badge '+(x.videoFile?'':'warn')+'">'+(x.videoFile?'Ready':'No video')+'</span>'+
     '<div class="acts"><button class="btn small" data-edit="'+x.id+'">Edit</button><button class="btn danger" data-del="'+x.id+'">Delete</button></div></div>'
@@ -83,6 +83,8 @@ $('#uploadForm').onsubmit=async e=>{
     item=await api('/api/admin/items',json('POST',Object.fromEntries(d)));
     $('#progressWrap').hidden=false;bar.style.width='0';
     await uploadVideo(item.id,file,p=>{bar.style.width=(p*100)+'%';st.textContent='Uploading… '+Math.round(p*100)+'%'});
+    const pf=$('#poster').files[0];
+    if(pf){st.textContent='Uploading poster…';const r=await fetch('/api/admin/items/'+item.id+'/poster',{method:'PUT',credentials:'same-origin',headers:{'Content-Type':pf.type},body:pf});if(!r.ok){const e=await r.json().catch(()=>({}));toast(e.error||'Poster upload failed')}}
     st.textContent='Done!';toast('Movie added');form.reset();$('#kind').onchange();refresh();
   }catch(err){
     st.textContent=err.message;
