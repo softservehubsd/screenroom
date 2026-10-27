@@ -1,4 +1,4 @@
-const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),{spawn}=require('node:child_process');
 const {pipeline,Transform}=require('node:stream'),{promisify}=require('node:util'),pipe=promisify(pipeline);
 const PORT=Number(process.env.PORT||3000),HOST=process.env.HOST||'0.0.0.0',ADMIN_PASSWORD=process.env.ADMIN_PASSWORD,SESSION_SECRET=process.env.SESSION_SECRET||ADMIN_PASSWORD,VIEWER_PASSWORD=process.env.VIEWER_PASSWORD||'';
 const DATA=path.resolve(process.env.DATA_DIR||'./data'),VIDEOS=path.join(DATA,'videos'),DB=path.join(DATA,'catalog.json'),PUBLIC=path.join(__dirname,'public'),MAX=8*1024*1024*1024;
@@ -17,6 +17,14 @@ const tries=new Map(),ip=req=>String(req.headers['x-forwarded-for']||req.socket.
 const secure=process.env.NODE_ENV==='production'?'; Secure':'';
 const send=(res,status,body,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers});res.end(JSON.stringify(body))};
 async function body(req,limit=1048576){let n=0,a=[];for await(const c of req){n+=c.length;if(n>limit)throw Error('Request too large');a.push(c)}return Buffer.concat(a)}
+
+function optimizeAudio(inp,out){
+  return new Promise(res=>{
+    const proc=spawn('ffmpeg',['-y','-i',inp,'-c:v','copy','-c:a','aac','-b:a','192k','-movflags','+faststart',out],{stdio:'ignore'});
+    proc.on('close',c=>res(c===0));
+    proc.on('error',()=>res(false));
+  });
+}
 const clean=(x,n=180)=>String(x||'').trim().slice(0,n);
 async function route(req,res){
  const u=new URL(req.url,'http://'+(req.headers.host||'localhost'));
@@ -31,7 +39,24 @@ if(u.pathname==='/api/catalog'&&req.method==='GET')return send(res,200,catalog()
  if(u.pathname==='/api/admin/items'&&req.method==='GET')return send(res,200,catalog().map(({videoFile,...x})=>({...x,videoFile:!!x.videoFile})));
  if(u.pathname==='/api/admin/items'&&req.method==='POST'){let d;try{d=JSON.parse(await body(req))}catch{return send(res,400,{error:'Invalid item details.'})}const kind=d.kind==='episode'?'episode':'movie',title=clean(d.title),seriesTitle=kind==='episode'?clean(d.seriesTitle):'';if(!title||(kind==='episode'&&!seriesTitle))return send(res,400,{error:'Add a title and, for episodes, a series name.'});const x={id:crypto.randomUUID(),kind,title,seriesTitle,season:kind==='episode'?Math.max(1,Number(d.season)||1):null,episode:kind==='episode'?Math.max(1,Number(d.episode)||1):null,year:clean(d.year,4),genre:clean(d.genre,48)||'Featured',synopsis:clean(d.synopsis,1200),runtime:clean(d.runtime,24),color:/^#[0-9a-fA-F]{6}$/.test(d.color)?d.color:'#263549',videoFile:false,createdAt:new Date().toISOString()};const a=catalog();a.push(x);saveCatalog(a);return send(res,201,x)}
  const up=u.pathname.match(/^\/api\/admin\/items\/([a-f0-9-]{36})\/video$/);
- if(up&&req.method==='PUT'){const a=catalog(),x=a.find(i=>i.id===up[1]);if(!x)return send(res,404,{error:'Library item not found.'});const type=(req.headers['content-type']||'').split(';')[0],allow=['video/mp4','video/webm','video/ogg','video/quicktime','video/x-m4v','video/x-matroska','video/mkv'];if(!allow.includes(type))return send(res,415,{error:'Upload an MP4, MKV, WebM, or MOV video.'});if(Number(req.headers['content-length']||0)>MAX)return send(res,413,{error:'Maximum upload size is 8 GB.'});let size=0;const lim=new Transform({transform(c,e,cb){size+=c.length;cb(size>MAX?Error('Maximum upload size is 8 GB.'):null,c)}}),f=vid(x.id),tmp=f+'.part';try{await pipe(req,lim,fs.createWriteStream(tmp,{flags:'w'}));if(!size)throw Error('The uploaded file was empty.');fs.renameSync(tmp,f);x.videoFile=true;x.contentType=type;x.size=size;saveCatalog(a);return send(res,200,{ok:true,item:x})}catch(e){try{fs.rmSync(tmp,{force:true})}catch{}return send(res,400,{error:e.message||'Upload failed.'})}}
+ if(up&&req.method==='PUT'){const a=catalog(),x=a.find(i=>i.id===up[1]);if(!x)return send(res,404,{error:'Library item not found.'});const type=(req.headers['content-type']||'').split(';')[0],allow=['video/mp4','video/webm','video/ogg','video/quicktime','video/x-m4v','video/x-matroska','video/mkv'];if(!allow.includes(type))return send(res,415,{error:'Upload an MP4, MKV, WebM, or MOV video.'});if(Number(req.headers['content-length']||0)>MAX)return send(res,413,{error:'Maximum upload size is 8 GB.'});let size=0;const lim=new Transform({transform(c,e,cb){size+=c.length;cb(size>MAX?Error('Maximum upload size is 8 GB.'):null,c)}}),f=vid(x.id),tmp=f+'.part';try{await pipe(req,lim,fs.createWriteStream(tmp,{flags:'w'}));if(!size)throw Error('The uploaded file was empty.');
+  const optTmp=f+'.opt.mp4';
+  const success=await optimizeAudio(tmp,optTmp);
+  if(success&&fs.existsSync(optTmp)&&fs.statSync(optTmp).size>0){
+    fs.renameSync(optTmp,f);
+    try{fs.rmSync(tmp,{force:true})}catch{}
+    x.contentType='video/mp4';
+    x.size=fs.statSync(f).size;
+  }else{
+    try{fs.rmSync(optTmp,{force:true})}catch{}
+    fs.renameSync(tmp,f);
+    x.contentType=type;
+    x.size=size;
+  }
+  x.videoFile=true;
+  saveCatalog(a);
+  return send(res,200,{ok:true,item:x})
+}catch(e){try{fs.rmSync(tmp,{force:true})}catch{}return send(res,400,{error:e.message||'Upload failed.'})}}
  const pp=u.pathname.match(/^\/api\/admin\/items\/([a-f0-9-]{36})\/poster$/);
   if(pp&&req.method==='PUT'){const a=catalog(),x=a.find(i=>i.id===pp[1]);if(!x)return send(res,404,{error:'Item not found.'});const type=(req.headers['content-type']||'').split(';')[0];if(!['image/jpeg','image/png','image/webp'].includes(type))return send(res,415,{error:'Poster must be JPG, PNG or WebP.'});let b;try{b=await body(req,6*1024*1024)}catch{return send(res,413,{error:'Poster must be under 6 MB.'})}if(!b.length)return send(res,400,{error:'Empty poster.'});fs.writeFileSync(poster(x.id),b);x.hasPoster=true;x.posterType=type;saveCatalog(a);return send(res,200,{ok:true})}
   const gp=u.pathname.match(/^\/api\/poster\/([a-f0-9-]{36})$/);
