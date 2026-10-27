@@ -65,7 +65,7 @@ function uploadVideo(id,file,onProgress){
   return new Promise((resolve,reject)=>{
     const x=new XMLHttpRequest();
     x.open('PUT','/api/admin/items/'+id+'/video');
-    x.setRequestHeader('Content-Type',file.type||'video/mp4');
+    const mime = file.type || (file.name.endsWith('.mkv') ? 'video/x-matroska' : 'video/mp4'); x.setRequestHeader('Content-Type', mime);
     x.upload.onprogress=e=>{if(e.lengthComputable)onProgress(e.loaded/e.total)};
     x.onload=()=>{if(x.status<300)return resolve();let m='Upload failed.';try{m=JSON.parse(x.responseText).error||m}catch{}reject(Error(m))};
     x.onerror=()=>reject(Error('Network error during upload.'));
