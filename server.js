@@ -64,8 +64,10 @@ if(u.pathname==='/api/catalog'&&req.method==='GET')return send(res,200,catalog()
   if(up&&req.method==='PUT'){
     const a=catalog(),x=a.find(i=>i.id===up[1]);
     if(!x)return send(res,404,{error:'Library item not found.'});
-    const type=(req.headers['content-type']||'').split(';')[0],allow=['video/mp4','video/webm','video/ogg','video/quicktime','video/x-m4v','video/x-matroska','video/mkv'];
-    if(!allow.includes(type))return send(res,415,{error:'Upload an MP4, MKV, WebM, or MOV video.'});
+    let type=(req.headers['content-type']||'').split(';')[0];
+    const isVideoType = type.startsWith('video/') || type === 'application/octet-stream' || type === 'application/x-matroska' || !type;
+    if(!isVideoType) return send(res,415,{error:'Upload an MP4, MKV, WebM, or MOV video file.'});
+    if(type === 'application/octet-stream' || !type) type = 'video/mp4';
 
     const isChunked = req.headers['x-chunk-index'] !== undefined;
     const chunkIndex = isChunked ? Number(req.headers['x-chunk-index']) : 0;

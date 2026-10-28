@@ -116,7 +116,13 @@ function uploadVideo(id, file, onProgress, onStatus) {
     // 16 MB chunks: works reliably on all mobile & desktop browsers, never hits 2GB buffer limits
     const CHUNK_SIZE = 16 * 1024 * 1024;
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    const mime = file.type || (file.name.endsWith('.mkv') ? 'video/x-matroska' : 'video/mp4');
+    let mime = 'video/mp4';
+    const nameLower = (file.name || '').toLowerCase();
+    if (nameLower.endsWith('.mkv')) mime = 'video/x-matroska';
+    else if (nameLower.endsWith('.webm')) mime = 'video/webm';
+    else if (nameLower.endsWith('.mov')) mime = 'video/quicktime';
+    else if (nameLower.endsWith('.m4v')) mime = 'video/x-m4v';
+    else if (file.type && file.type.startsWith('video/')) mime = file.type;
 
     for (let i = 0; i < totalChunks; i++) {
       const start = i * CHUNK_SIZE;
@@ -147,14 +153,14 @@ function uploadVideo(id, file, onProgress, onStatus) {
         } catch (e) {
           lastErr = e;
           if (attempt < 3) {
-            if (onStatus) onStatus('Retrying part ' + (i + 1) + '/' + totalChunks + '…');
+            if (onStatus) onStatus('Retrying part ' + (i + 1) + '/' + totalChunks + ': ' + (lastErr?.message || 'network drop') + '…');
             await new Promise(r => setTimeout(r, 1200 * attempt));
           }
         }
       }
 
       if (!success) {
-        return reject(Error(lastErr?.message || 'Failed to upload part ' + (i + 1) + ' of ' + totalChunks));
+        return reject(Error((lastErr?.message || 'Upload error') + ' (Part ' + (i + 1) + '/' + totalChunks + ')'));
       }
     }
 
