@@ -25,6 +25,20 @@ function optimizeAudio(inp,out){
     proc.on('error',()=>res(false));
   });
 }
+
+function cleanOrphanParts(){
+  try{
+    const now=Date.now(),files=fs.readdirSync(VIDEOS);
+    for(const f of files){
+      if(f.endsWith('.part')||f.endsWith('.opt.mp4')){
+        const fp=path.join(VIDEOS,f),st=fs.statSync(fp);
+        if(now-st.mtimeMs>30*60*1000) fs.rmSync(fp,{force:true});
+      }
+    }
+  }catch(e){}
+}
+cleanOrphanParts();
+setInterval(cleanOrphanParts,30*60*1000);
 const clean=(x,n=180)=>String(x||'').trim().slice(0,n);
 async function route(req,res){
  const u=new URL(req.url,'http://'+(req.headers.host||'localhost'));
@@ -133,7 +147,7 @@ if(u.pathname==='/api/catalog'&&req.method==='GET')return send(res,200,catalog()
   const patch=u.pathname.match(/^\/api\/admin\/items\/([a-f0-9-]{36})$/);
   if(patch&&req.method==='PATCH'){let d;try{d=JSON.parse(await body(req))}catch{return send(res,400,{error:'Invalid item details.'})}const a=catalog(),x=a.find(i=>i.id===patch[1]);if(!x)return send(res,404,{error:'Item not found.'});const t=clean(d.title);if(!t)return send(res,400,{error:'Title is required.'});x.title=t;if(x.kind==='episode'){const s=clean(d.seriesTitle);if(s)x.seriesTitle=s;x.season=Math.max(1,Number(d.season)||1);x.episode=Math.max(1,Number(d.episode)||1)}x.year=clean(d.year,4);x.genre=clean(d.genre,48)||'Featured';x.synopsis=clean(d.synopsis,1200);x.runtime=clean(d.runtime,24);if(/^#[0-9a-fA-F]{6}$/.test(d.color))x.color=d.color;saveCatalog(a);return send(res,200,x)}
   const del=u.pathname.match(/^\/api\/admin\/items\/([a-f0-9-]{36})$/);
- if(del&&req.method==='DELETE'){const a=catalog(),b=a.filter(i=>i.id!==del[1]);if(a.length===b.length)return send(res,404,{error:'Item not found.'});try{fs.rmSync(vid(del[1]),{force:true});fs.rmSync(poster(del[1]),{force:true})}catch{}saveCatalog(b);return send(res,200,{ok:true})}
+ if(del&&req.method==='DELETE'){const a=catalog(),b=a.filter(i=>i.id!==del[1]);if(a.length===b.length)return send(res,404,{error:'Item not found.'});try{fs.rmSync(vid(del[1]),{force:true});fs.rmSync(vid(del[1])+'.part',{force:true});fs.rmSync(vid(del[1])+'.opt.mp4',{force:true});fs.rmSync(poster(del[1]),{force:true})}catch{}saveCatalog(b);return send(res,200,{ok:true})}
  const sm=u.pathname.match(/^\/api\/video\/([a-f0-9-]{36})$/);
  if(sm&&req.method==='GET'){const x=catalog().find(i=>i.id===sm[1]&&i.videoFile);if(!x)return send(res,404,{error:'Video not found.'});let st;try{st=fs.statSync(vid(x.id))}catch{return send(res,404,{error:'Video not found.'})}const h={'Content-Type':x.contentType||'video/mp4','Accept-Ranges':'bytes','Cache-Control':'private, max-age=3600','X-Content-Type-Options':'nosniff'},r=req.headers.range;if(r){const m=r.match(/bytes=(\d*)-(\d*)/);if(!m){res.writeHead(416,{'Content-Range':'bytes */'+st.size});return res.end()}const start=m[1]?Number(m[1]):Math.max(0,st.size-Number(m[2])),end=m[2]&&m[1]?Math.min(Number(m[2]),st.size-1):st.size-1;if(start>=st.size||end<start){res.writeHead(416,{'Content-Range':'bytes */'+st.size});return res.end()}res.writeHead(206,{...h,'Content-Length':end-start+1,'Content-Range':'bytes '+start+'-'+end+'/'+st.size});return pipe(fs.createReadStream(vid(x.id),{start,end}),res).catch(()=>{})}res.writeHead(200,{...h,'Content-Length':st.size});return pipe(fs.createReadStream(vid(x.id)),res).catch(()=>{})}
  const rel=u.pathname==='/'?'index.html':u.pathname==='/admin'?'admin.html':u.pathname==='/enter'?'enter.html':decodeURIComponent(u.pathname.slice(1)),file=path.resolve(PUBLIC,rel);if(!file.startsWith(PUBLIC+path.sep)||!fs.existsSync(file)||!fs.statSync(file).isFile())return send(res,404,{error:'Not found.'});
