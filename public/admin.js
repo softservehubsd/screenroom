@@ -1,3 +1,29 @@
+
+async function updateStorage(){
+  try{
+    const s = await api('/api/admin/storage');
+    const fill = $('#storageFill');
+    const num = $('#storageNumbers');
+    const det = $('#storageDetail');
+    const dot = $('#storageDot');
+    if(!fill || !num) return;
+
+    fill.style.width = Math.min(100, Math.max(2, s.percentUsed)) + '%';
+    num.textContent = s.freeGB + ' GB free of ' + s.totalGB + ' GB';
+    det.textContent = s.usedGB + ' GB used (' + s.percentUsed + '%) · Movies: ' + s.moviesSizeGB + ' GB (' + s.movieCount + ' titles)';
+
+    if (s.percentUsed > 90) {
+      fill.style.background = '#ef4444';
+      if (dot) dot.style.background = '#ef4444';
+    } else if (s.percentUsed > 75) {
+      fill.style.background = '#f59e0b';
+      if (dot) dot.style.background = '#f59e0b';
+    } else {
+      fill.style.background = 'var(--accent)';
+      if (dot) dot.style.background = '#22c55e';
+    }
+  }catch(e){}
+}
 const $=s=>document.querySelector(s);
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let items=[];
@@ -14,6 +40,7 @@ const json=(method,body)=>({method,headers:{'Content-Type':'application/json'},b
 function show(authed){$('#loginView').hidden=authed;$('#appView').hidden=!authed;if(authed)refresh()}
 
 async function refresh(){
+  updateStorage();
   try{items=await api('/api/admin/items')}catch(e){if(/sign-in/i.test(e.message))return show(false);toast(e.message);return}
   render();
 }

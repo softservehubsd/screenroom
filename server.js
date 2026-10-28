@@ -36,6 +36,28 @@ if(u.pathname==='/api/catalog'&&req.method==='GET')return send(res,200,catalog()
  if(u.pathname==='/api/admin/login'&&req.method==='POST'){let x;try{x=JSON.parse(await body(req))}catch{return send(res,400,{error:'Invalid request.'})}if(blocked(req))return send(res,429,{error:'Too many attempts. Try again in 15 minutes.'});if(!eq(x.password||'',ADMIN_PASSWORD)){fail(req);return send(res,401,{error:'The password was not accepted.'})}ok(req);return send(res,200,{authenticated:true},{'Set-Cookie':'screenroom_session='+token('admin')+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800'+(process.env.NODE_ENV==='production'?'; Secure':'')})}
  if(u.pathname==='/api/admin/logout'&&req.method==='POST')return send(res,200,{ok:true},{'Set-Cookie':'screenroom_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'});
  if(u.pathname.startsWith('/api/admin/')&&!admin(req))return send(res,401,{error:'Admin sign-in required.'});
+  if(u.pathname==='/api/admin/storage'&&req.method==='GET'){
+    try{
+      const stats=fs.statfsSync(VIDEOS);
+      const total=Number(stats.bsize)*Number(stats.blocks);
+      const free=Number(stats.bsize)*Number(stats.bavail);
+      const used=total-free;
+      const pct=total>0?Math.round((used/total)*100):0;
+      const cat=catalog();
+      const movieSize=cat.reduce((acc,x)=>acc+(x.size||0),0);
+      return send(res,200,{
+        totalGB:(total/(1024**3)).toFixed(1),
+        freeGB:(free/(1024**3)).toFixed(1),
+        usedGB:(used/(1024**3)).toFixed(1),
+        percentUsed:pct,
+        movieCount:cat.filter(x=>x.videoFile).length,
+        moviesSizeGB:(movieSize/(1024**3)).toFixed(1)
+      });
+    }catch(e){
+      return send(res,500,{error:e.message||'Could not read disk storage.'});
+    }
+  }
+
  if(u.pathname==='/api/admin/items'&&req.method==='GET')return send(res,200,catalog().map(({videoFile,...x})=>({...x,videoFile:!!x.videoFile})));
  if(u.pathname==='/api/admin/items'&&req.method==='POST'){let d;try{d=JSON.parse(await body(req))}catch{return send(res,400,{error:'Invalid item details.'})}const kind=d.kind==='episode'?'episode':'movie',title=clean(d.title),seriesTitle=kind==='episode'?clean(d.seriesTitle):'';if(!title||(kind==='episode'&&!seriesTitle))return send(res,400,{error:'Add a title and, for episodes, a series name.'});const x={id:crypto.randomUUID(),kind,title,seriesTitle,season:kind==='episode'?Math.max(1,Number(d.season)||1):null,episode:kind==='episode'?Math.max(1,Number(d.episode)||1):null,year:clean(d.year,4),genre:clean(d.genre,48)||'Featured',synopsis:clean(d.synopsis,1200),runtime:clean(d.runtime,24),color:/^#[0-9a-fA-F]{6}$/.test(d.color)?d.color:'#263549',videoFile:false,createdAt:new Date().toISOString()};const a=catalog();a.push(x);saveCatalog(a);return send(res,201,x)}
    const up=u.pathname.match(/^\/api\/admin\/items\/([a-f0-9-]{36})\/video$/);

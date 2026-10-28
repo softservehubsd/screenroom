@@ -72,6 +72,17 @@
     </section>
 
     <section class="card library">
+            <div class="storage-box">
+        <div class="storage-info">
+          <div class="storage-label">
+            <span id="storageDot" class="storage-dot"></span>
+            <b>AWS Server Storage</b>
+            <small id="storageDetail">Reading disk status…</small>
+          </div>
+          <div class="storage-numbers" id="storageNumbers">-- / -- GB</div>
+        </div>
+        <div class="storage-track"><div id="storageFill" class="storage-fill" style="width: 0%"></div></div>
+      </div>
       <div class="lib-head">
         <h2>Library <span id="count"></span></h2>
         <input id="filter" type="search" placeholder="Search…">

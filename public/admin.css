@@ -243,3 +243,60 @@ dialog h3 { margin: 0 0 18px; font-size: 19px; }
   .upload { position: static; }
   .lib-head input { width: 140px; }
 }
+
+.storage-box {
+  background: var(--panel-alt);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+.storage-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 12px;
+}
+.storage-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+.storage-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+  flex-shrink: 0;
+}
+.storage-label b {
+  color: var(--ink);
+  font-size: 13.5px;
+}
+.storage-label small {
+  color: var(--muted);
+  margin-top: 0;
+  font-size: 11.5px;
+}
+.storage-numbers {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+.storage-track {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.storage-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.4s ease, background 0.3s ease;
+}
