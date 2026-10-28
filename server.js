@@ -38,26 +38,71 @@ if(u.pathname==='/api/catalog'&&req.method==='GET')return send(res,200,catalog()
  if(u.pathname.startsWith('/api/admin/')&&!admin(req))return send(res,401,{error:'Admin sign-in required.'});
  if(u.pathname==='/api/admin/items'&&req.method==='GET')return send(res,200,catalog().map(({videoFile,...x})=>({...x,videoFile:!!x.videoFile})));
  if(u.pathname==='/api/admin/items'&&req.method==='POST'){let d;try{d=JSON.parse(await body(req))}catch{return send(res,400,{error:'Invalid item details.'})}const kind=d.kind==='episode'?'episode':'movie',title=clean(d.title),seriesTitle=kind==='episode'?clean(d.seriesTitle):'';if(!title||(kind==='episode'&&!seriesTitle))return send(res,400,{error:'Add a title and, for episodes, a series name.'});const x={id:crypto.randomUUID(),kind,title,seriesTitle,season:kind==='episode'?Math.max(1,Number(d.season)||1):null,episode:kind==='episode'?Math.max(1,Number(d.episode)||1):null,year:clean(d.year,4),genre:clean(d.genre,48)||'Featured',synopsis:clean(d.synopsis,1200),runtime:clean(d.runtime,24),color:/^#[0-9a-fA-F]{6}$/.test(d.color)?d.color:'#263549',videoFile:false,createdAt:new Date().toISOString()};const a=catalog();a.push(x);saveCatalog(a);return send(res,201,x)}
- const up=u.pathname.match(/^\/api\/admin\/items\/([a-f0-9-]{36})\/video$/);
- if(up&&req.method==='PUT'){const a=catalog(),x=a.find(i=>i.id===up[1]);if(!x)return send(res,404,{error:'Library item not found.'});const type=(req.headers['content-type']||'').split(';')[0],allow=['video/mp4','video/webm','video/ogg','video/quicktime','video/x-m4v','video/x-matroska','video/mkv'];if(!allow.includes(type))return send(res,415,{error:'Upload an MP4, MKV, WebM, or MOV video.'});if(Number(req.headers['content-length']||0)>MAX)return send(res,413,{error:'Maximum upload size is 8 GB.'});let size=0;const lim=new Transform({transform(c,e,cb){size+=c.length;cb(size>MAX?Error('Maximum upload size is 8 GB.'):null,c)}}),f=vid(x.id),tmp=f+'.part';try{await pipe(req,lim,fs.createWriteStream(tmp,{flags:'w'}));if(!size)throw Error('The uploaded file was empty.');
-  const optTmp=f+'.opt.mp4';
-  const success=await optimizeAudio(tmp,optTmp);
-  if(success&&fs.existsSync(optTmp)&&fs.statSync(optTmp).size>0){
-    fs.renameSync(optTmp,f);
-    try{fs.rmSync(tmp,{force:true})}catch{}
-    x.contentType='video/mp4';
-    x.size=fs.statSync(f).size;
-  }else{
-    try{fs.rmSync(optTmp,{force:true})}catch{}
-    fs.renameSync(tmp,f);
-    x.contentType=type;
-    x.size=size;
+   const up=u.pathname.match(/^\/api\/admin\/items\/([a-f0-9-]{36})\/video$/);
+  if(up&&req.method==='PUT'){
+    const a=catalog(),x=a.find(i=>i.id===up[1]);
+    if(!x)return send(res,404,{error:'Library item not found.'});
+    const type=(req.headers['content-type']||'').split(';')[0],allow=['video/mp4','video/webm','video/ogg','video/quicktime','video/x-m4v','video/x-matroska','video/mkv'];
+    if(!allow.includes(type))return send(res,415,{error:'Upload an MP4, MKV, WebM, or MOV video.'});
+
+    const isChunked = req.headers['x-chunk-index'] !== undefined;
+    const chunkIndex = isChunked ? Number(req.headers['x-chunk-index']) : 0;
+    const chunkTotal = isChunked ? Number(req.headers['x-chunk-total']) : 1;
+    const chunkOffset = isChunked ? Number(req.headers['x-chunk-offset'] || 0) : 0;
+    const totalFileSize = Number(req.headers['x-file-size'] || req.headers['content-length'] || 0);
+
+    if (totalFileSize > MAX) return send(res, 413, { error: 'Maximum upload size is 8 GB.' });
+
+    const f=vid(x.id), tmp=f+'.part';
+    const writeFlags = (chunkIndex === 0) ? 'w' : 'r+';
+
+    if (chunkIndex > 0 && !fs.existsSync(tmp)) {
+      return send(res, 400, { error: 'Upload sequence interrupted. Please restart upload.' });
+    }
+
+    let chunkSize = 0;
+    const maxChunk = isChunked ? (100 * 1024 * 1024) : MAX;
+    const lim = new Transform({
+      transform(c, e, cb) {
+        chunkSize += c.length;
+        cb(chunkSize > maxChunk ? Error('Chunk too large.') : null, c);
+      }
+    });
+
+    try {
+      const outStream = fs.createWriteStream(tmp, { flags: writeFlags, start: chunkOffset });
+      await pipe(req, lim, outStream);
+      if (!chunkSize) throw Error('Uploaded data was empty.');
+
+      if (chunkIndex < chunkTotal - 1) {
+        return send(res, 200, { ok: true, chunk: chunkIndex, next: chunkIndex + 1 });
+      }
+
+      // Final chunk complete - optimize and finalize
+      const optTmp = f + '.opt.mp4';
+      const success = await optimizeAudio(tmp, optTmp);
+      if (success && fs.existsSync(optTmp) && fs.statSync(optTmp).size > 0) {
+        fs.renameSync(optTmp, f);
+        try { fs.rmSync(tmp, { force: true }); } catch {}
+        x.contentType = 'video/mp4';
+        x.size = fs.statSync(f).size;
+      } else {
+        try { fs.rmSync(optTmp, { force: true }); } catch {}
+        fs.renameSync(tmp, f);
+        x.contentType = type;
+        x.size = fs.statSync(f).size;
+      }
+      x.videoFile = true;
+      saveCatalog(a);
+      return send(res, 200, { ok: true, item: x });
+    } catch(e) {
+      if (chunkIndex === 0) {
+        try { fs.rmSync(tmp, { force: true }); } catch {}
+      }
+      return send(res, 400, { error: e.message || 'Upload failed.' });
+    }
   }
-  x.videoFile=true;
-  saveCatalog(a);
-  return send(res,200,{ok:true,item:x})
-}catch(e){try{fs.rmSync(tmp,{force:true})}catch{}return send(res,400,{error:e.message||'Upload failed.'})}}
- const pp=u.pathname.match(/^\/api\/admin\/items\/([a-f0-9-]{36})\/poster$/);
+  const pp=u.pathname.match(/^\/api\/admin\/items\/([a-f0-9-]{36})\/poster$/);
   if(pp&&req.method==='PUT'){const a=catalog(),x=a.find(i=>i.id===pp[1]);if(!x)return send(res,404,{error:'Item not found.'});const type=(req.headers['content-type']||'').split(';')[0];if(!['image/jpeg','image/png','image/webp'].includes(type))return send(res,415,{error:'Poster must be JPG, PNG or WebP.'});let b;try{b=await body(req,6*1024*1024)}catch{return send(res,413,{error:'Poster must be under 6 MB.'})}if(!b.length)return send(res,400,{error:'Empty poster.'});fs.writeFileSync(poster(x.id),b);x.hasPoster=true;x.posterType=type;saveCatalog(a);return send(res,200,{ok:true})}
   const gp=u.pathname.match(/^\/api\/poster\/([a-f0-9-]{36})$/);
   if(gp&&req.method==='GET'){const x=catalog().find(i=>i.id===gp[1]&&i.hasPoster);if(!x||!fs.existsSync(poster(x.id)))return send(res,404,{error:'No poster.'});res.writeHead(200,{'Content-Type':x.posterType||'image/jpeg','Cache-Control':'private, max-age=86400','X-Content-Type-Options':'nosniff'});return fs.createReadStream(poster(x.id)).pipe(res)}

@@ -61,15 +61,78 @@ $('#kind').onchange=()=>{
   $('#seriesWrap input').required=ep;
 };
 
-function uploadVideo(id,file,onProgress){
-  return new Promise((resolve,reject)=>{
-    const x=new XMLHttpRequest();
-    x.open('PUT','/api/admin/items/'+id+'/video');
-    const mime = file.type || (file.name.endsWith('.mkv') ? 'video/x-matroska' : 'video/mp4'); x.setRequestHeader('Content-Type', mime);
-    x.upload.onprogress=e=>{if(e.lengthComputable)onProgress(e.loaded/e.total)};
-    x.onload=()=>{if(x.status<300)return resolve();let m='Upload failed.';try{m=JSON.parse(x.responseText).error||m}catch{}reject(Error(m))};
-    x.onerror=()=>reject(Error('Network error during upload.'));
-    x.send(file);
+function uploadChunk(id, chunk, index, total, offset, totalSize, mime, onChunkProgress) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('PUT', '/api/admin/items/' + id + '/video');
+    x.setRequestHeader('Content-Type', mime);
+    x.setRequestHeader('X-Chunk-Index', String(index));
+    x.setRequestHeader('X-Chunk-Total', String(total));
+    x.setRequestHeader('X-Chunk-Offset', String(offset));
+    x.setRequestHeader('X-File-Size', String(totalSize));
+    x.upload.onprogress = e => {
+      if (e.lengthComputable) onChunkProgress(e.loaded / e.total);
+    };
+    x.onload = () => {
+      if (x.status < 300) return resolve();
+      let m = 'Chunk upload failed.';
+      try { m = JSON.parse(x.responseText).error || m; } catch {}
+      reject(Error(m));
+    };
+    x.onerror = () => reject(Error('Network error during upload.'));
+    x.send(chunk);
+  });
+}
+
+function uploadVideo(id, file, onProgress, onStatus) {
+  return new Promise(async (resolve, reject) => {
+    // 16 MB chunks: works reliably on all mobile & desktop browsers, never hits 2GB buffer limits
+    const CHUNK_SIZE = 16 * 1024 * 1024;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const mime = file.type || (file.name.endsWith('.mkv') ? 'video/x-matroska' : 'video/mp4');
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(file.size, start + CHUNK_SIZE);
+      const chunk = file.slice(start, end);
+
+      if (onStatus) {
+        if (i === totalChunks - 1) {
+          onStatus('Uploading final part (' + (i + 1) + '/' + totalChunks + ')…');
+        } else {
+          const pct = Math.round((start / file.size) * 100);
+          onStatus('Uploading… ' + pct + '% (Part ' + (i + 1) + '/' + totalChunks + ')');
+        }
+      }
+
+      let attempt = 0;
+      let success = false;
+      let lastErr = null;
+
+      while (attempt < 3 && !success) {
+        attempt++;
+        try {
+          await uploadChunk(id, chunk, i, totalChunks, start, file.size, mime, p => {
+            const uploadedBytes = start + (p * chunk.size);
+            onProgress(uploadedBytes / file.size);
+          });
+          success = true;
+        } catch (e) {
+          lastErr = e;
+          if (attempt < 3) {
+            if (onStatus) onStatus('Retrying part ' + (i + 1) + '/' + totalChunks + '…');
+            await new Promise(r => setTimeout(r, 1200 * attempt));
+          }
+        }
+      }
+
+      if (!success) {
+        return reject(Error(lastErr?.message || 'Failed to upload part ' + (i + 1) + ' of ' + totalChunks));
+      }
+    }
+
+    if (onStatus) onStatus('Processing & optimizing video audio on server…');
+    resolve();
   });
 }
 
@@ -82,7 +145,7 @@ $('#uploadForm').onsubmit=async e=>{
   try{
     item=await api('/api/admin/items',json('POST',Object.fromEntries(d)));
     $('#progressWrap').hidden=false;bar.style.width='0';
-    await uploadVideo(item.id,file,p=>{bar.style.width=(p*100)+'%';st.textContent='Uploading… '+Math.round(p*100)+'%'});
+    await uploadVideo(item.id,file,p=>{bar.style.width=(p*100)+'%';},msg=>{st.textContent=msg;});
     const pf=$('#poster').files[0];
     if(pf){st.textContent='Uploading poster…';const r=await fetch('/api/admin/items/'+item.id+'/poster',{method:'PUT',credentials:'same-origin',headers:{'Content-Type':pf.type},body:pf});if(!r.ok){const e=await r.json().catch(()=>({}));toast(e.error||'Poster upload failed')}}
     st.textContent='Done!';toast('Movie added');form.reset();$('#kind').onchange();refresh();
