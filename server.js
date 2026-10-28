@@ -116,23 +116,34 @@ if(u.pathname==='/api/catalog'&&req.method==='GET')return send(res,200,catalog()
         return send(res, 200, { ok: true, chunk: chunkIndex, next: chunkIndex + 1 });
       }
 
-      // Final chunk complete - optimize and finalize
-      const optTmp = f + '.opt.mp4';
-      const success = await optimizeAudio(tmp, optTmp);
-      if (success && fs.existsSync(optTmp) && fs.statSync(optTmp).size > 0) {
-        fs.renameSync(optTmp, f);
-        try { fs.rmSync(tmp, { force: true }); } catch {}
-        x.contentType = 'video/mp4';
-        x.size = fs.statSync(f).size;
-      } else {
-        try { fs.rmSync(optTmp, { force: true }); } catch {}
-        fs.renameSync(tmp, f);
-        x.contentType = type;
-        x.size = fs.statSync(f).size;
-      }
+      // Final chunk complete - immediately finalize and return 200 (zero browser timeout!)
+      fs.renameSync(tmp, f);
       x.videoFile = true;
+      x.contentType = type;
+      x.size = fs.statSync(f).size;
       saveCatalog(a);
-      return send(res, 200, { ok: true, item: x });
+      send(res, 200, { ok: true, item: x });
+
+      // Background audio optimization for TV (runs asynchronously without blocking HTTP)
+      (async () => {
+        try {
+          const optTmp = f + '.opt.mp4';
+          const success = await optimizeAudio(f, optTmp);
+          if (success && fs.existsSync(optTmp) && fs.statSync(optTmp).size > 0) {
+            fs.renameSync(optTmp, f);
+            const curCat = catalog();
+            const cur = curCat.find(i => i.id === x.id);
+            if (cur) {
+              cur.contentType = 'video/mp4';
+              cur.size = fs.statSync(f).size;
+              saveCatalog(curCat);
+            }
+          } else {
+            try { fs.rmSync(optTmp, { force: true }); } catch {}
+          }
+        } catch (e) {}
+      })();
+      return;
     } catch(e) {
       if (chunkIndex === 0) {
         try { fs.rmSync(tmp, { force: true }); } catch {}

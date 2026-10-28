@@ -187,7 +187,7 @@ $('#uploadForm').onsubmit=async e=>{
     st.textContent='Done!';toast('Movie added');form.reset();$('#kind').onchange();refresh();
   }catch(err){
     st.textContent=err.message;
-    if(item){try{await api('/api/admin/items/'+item.id,{method:'DELETE'})}catch{}refresh()}
+    refresh();
   }finally{btn.disabled=false;setTimeout(()=>{$('#progressWrap').hidden=true},1500)}
 };
 
