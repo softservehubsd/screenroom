@@ -148,6 +148,9 @@ function uploadVideo(id, file, onProgress, onStatus) {
           await uploadChunk(id, chunk, i, totalChunks, start, file.size, mime, p => {
             const uploadedBytes = start + (p * chunk.size);
             onProgress(uploadedBytes / file.size);
+            if (i === totalChunks - 1 && p >= 0.98 && onStatus) {
+              onStatus('⚡ File sent (100%)! Server is now finalizing & optimizing audio for TV playback… please wait ~1-2 min (do not close this tab)');
+            }
           });
           success = true;
         } catch (e) {
